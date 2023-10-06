@@ -7,7 +7,7 @@ You are welcome to add support to other platforms ( *MacOS* ) or add improvement
 For Windows:
 > win-build-release.bat
 
-For Linux:
+For Linux/MacOS:
 > cargo build --release
 
 If you want to build the debug version of the bootstrapper for development you can run
