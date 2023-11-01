@@ -1,7 +1,8 @@
+# THIS PROJECT IS ON HOLD BECAUSE MY COMPUTER DIED!!!! (rest in peace)
+
+
 # Syntax Boostrapper
 A bootstrapper written in Rust meant to replace the old Roblox Launcher
-
-You are welcome to add support to other platforms ( *MacOS* ) or add improvements to the bootstrapper
 
 ## Building
 For Windows:
@@ -13,3 +14,8 @@ For Linux:
 If you want to build the debug version of the bootstrapper for development you can run
 > cargo build
 
+For Intel Mac:
+> cargo build --release --target=x86_64-apple-darwin
+
+If you want to build the debug version of the bootstrapper for development you can run
+> cargo build --target=x86_64-apple-darwin

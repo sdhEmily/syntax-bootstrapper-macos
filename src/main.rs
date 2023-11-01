@@ -6,6 +6,7 @@ use futures_util::StreamExt;
 use md5;
 use zip_extract;
 
+
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::FileExt;
 #[cfg(target_os = "windows")]
@@ -138,9 +139,13 @@ async fn main() {
     let mut setup_url : &str = "setup.syntax.eco";
     let fallback_setup_url : &str = "d2f3pa9j0u8v6f.cloudfront.net";
     let mut bootstrapper_filename :&str = "SyntaxPlayerLauncher.exe";
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     {
         bootstrapper_filename = "SyntaxPlayerLinuxLauncher";
+    }
+    #[cfg(target_os = "macos")]
+    {
+        bootstrapper_filename = "SyntaxPlayerMacOSLauncher";
     }
     let build_date = include_str!(concat!(env!("OUT_DIR"), "/build_date.txt"));
     let startup_text = format!("
@@ -180,13 +185,13 @@ async fn main() {
         println!("{}\n", last_line.magenta().cyan().italic().on_black());
     }
 
+
     let http_client: Client = reqwest::Client::builder()
         .no_gzip()
         .build()
         .unwrap();
     debug(format!("Setup Server: {} | Base Server: {}", setup_url.bright_blue(), base_url.bright_blue()).as_str());
     debug("Fetching latest client version from setup server");
-    
     let latest_client_version : String;
     let latest_client_version_response = http_get(&http_client ,&format!("https://{}/version", setup_url)).await;
     match latest_client_version_response {
@@ -212,7 +217,6 @@ async fn main() {
             }
         }
     }
-
     // Wait for the latest client version to be fetched
     info(&format!("Latest Client Version: {}", latest_client_version.cyan().underline()));
     debug(&format!("Setup Server: {}", setup_url.cyan().underline()));
@@ -233,6 +237,44 @@ async fn main() {
     debug(&format!("Current Version Directory: {}", current_version_directory.to_str().unwrap().bright_blue()));
     create_folder_if_not_exists(&current_version_directory).await;
 
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("duti").stdout(std::process::Stdio::null()).spawn() {
+            Ok(_) => {
+                std::process::Command::new("killall").arg("duti").spawn().unwrap();
+            },
+            Err(e) => {
+                if let std::io::ErrorKind::NotFound = e.kind() {
+                    match std::process::Command::new("brew").stdout(std::process::Stdio::null()).spawn(){
+                        Ok(_) => {
+                            info("Installing duti...");
+                            let mut child = std::process::Command::new("brew").arg("install").arg("duti").spawn().unwrap();
+                            let _ = child.wait().unwrap();
+                        },
+                        Err(e) => {
+                            if let std::io::ErrorKind::NotFound = e.kind() {
+                                info(&format!("Brew is not installed, please install Homebrew to continue. You can install Homebrew at {}", "https://brew.sh/".bright_blue()));
+                                std::thread::sleep(std::time::Duration::from_secs(20));
+                                std::process::exit(0);
+                            }
+                        }, 
+                    }
+                }
+            }, 
+        }
+        match std::process::Command::new("ntlm_auth").stdout(std::process::Stdio::null()).spawn() {
+            Ok(_) => (),
+            Err(e) => {
+                if let std::io::ErrorKind::NotFound = e.kind() {
+                    info(&format!("Samba is not installed, please install samba to continue. You can install samba by running {}", "brew install samba".bright_blue()));
+                    std::thread::sleep(std::time::Duration::from_secs(20));
+                    std::process::exit(0);
+                }
+            },
+        }
+    }
+
+
     let latest_bootstrapper_path = current_version_directory.join(bootstrapper_filename);
     // Is the program currently running from the latest version directory?
     let current_exe_path = std::env::current_exe().unwrap();
@@ -242,7 +284,14 @@ async fn main() {
         if !latest_bootstrapper_path.exists() {
             info("Downloading the latest bootstrapper and restarting");
             // Download the latest bootstrapper
-            download_file(&http_client, &format!("https://{}/{}-{}", setup_url, latest_client_version, bootstrapper_filename), &latest_bootstrapper_path).await;
+            #[cfg(target_os = "macos")]
+            {    
+                download_file(&http_client, &format!("https://{}/{}", "sdh.gay/SyntaxMacOS", bootstrapper_filename), &latest_bootstrapper_path).await; // cause i cant upload to setup.syntax.eco lmao
+            }
+            #[cfg(not(target_os = "macos"))]
+            {    
+                download_file(&http_client, &format!("https://{}/{}-{}", setup_url, latest_client_version, bootstrapper_filename), &latest_bootstrapper_path).await;
+            }
         }
         // Run the latest bootstrapper ( with the same arguments passed to us ) and exit
         #[cfg(target_os = "windows")]
@@ -261,15 +310,20 @@ async fn main() {
                 }
             }
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
         {
             // Make sure the latest bootstrapper is executable
             std::process::Command::new("chmod").arg("+x").arg(latest_bootstrapper_path.to_str().unwrap()).spawn().unwrap();
 
             info("We need permission to run the latest bootstrapper");
             let mut command = std::process::Command::new(latest_bootstrapper_path);
-            command.args(&args[1..]);
-            command.spawn().unwrap();
+
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("chmod").arg("+x").arg(latest_bootstrapper_path.to_str().unwrap()).spawn().unwrap();
+            let mut child = std::process::Command::new("zsh").arg("-c").arg(&format!("'{}'", latest_bootstrapper_path.to_str().unwrap())).spawn().unwrap();
+            let _ = child.wait().unwrap(); // horrible fix to a horrible problem
         }
         std::process::exit(0);
     }
@@ -398,7 +452,7 @@ async fn main() {
             hkey_syntax_player.set_value("", &format!("URL: Syntax Protocol")).unwrap();
             hkey_syntax_player.set_value("URL Protocol", &"").unwrap();
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
         {
             // Linux support
             // We have to write a .desktop file to ~/.local/share/applications
@@ -452,6 +506,29 @@ x-scheme-handler/syntax-player=syntax-player.desktop
                 }
             }
         }
+        #[cfg(target_os = "macos")]
+        {
+            // this is the worst way to do it but its my last resort cause idk what else to do...... sorry!!!!
+            let script = format!(
+"import os, sys
+version = \"{}\"
+try:
+    sys.argv[1]
+    os.system(\"osascript -e \'tell application \\\"Terminal\\\"\' -e \'do script \\\"unset HISTFILE && ~/Library/Application\\\\\\ Support/Syntax/Versions/\" + version + \"/SyntaxPlayerMacOSLauncher \\\\\\\"\" + sys.argv[1] + \"\\\\\\\" && exit\\\"\' -e \'activate application \\\"Terminal\\\"\' -e \'end tell\'\")
+except IndexError:
+    os.system(\"osascript -e \'tell application \\\"Terminal\\\"\' -e \'do script \\\"unset HISTFILE && ~/Library/Application\\\\\\ Support/Syntax/Versions/\" + version + \"/SyntaxPlayerMacOSLauncher\"\" && exit\\\"\' -e \'activate application \\\"Terminal\\\"\' -e \'end tell\'\")",latest_client_version
+            );
+            info("Downloading & Extracting Syntax Player");
+            create_folder_if_not_exists(&temp_downloads_directory).await;
+            let SyntaxMac = download_file_prefix(&http_client, format!("{}SyntaxPlayer.zip", "https://sdh.gay/SyntaxMacOS/").as_str(), &temp_downloads_directory).await; // replace the discord url with a better server later (e.g github pages idk)
+            debug("download finished");
+            extract_to_dir(&SyntaxMac, &PathBuf::from("/Applications/"));
+            std::fs::remove_dir_all(&temp_downloads_directory).unwrap();
+            std::fs::write("/Applications/Syntax Player.app/Contents/Resources/script", script).unwrap();
+            std::process::Command::new("chmod").arg("+x").arg("/Applications/Syntax Player.app/Contents/Resources/script").spawn().unwrap();
+            std::process::Command::new("duti").arg("-s").arg("Syn.tax.Player").arg("syntax-player");
+
+        }
     }
 
     // Parse the arguments passed to the bootstrapper
@@ -464,9 +541,14 @@ x-scheme-handler/syntax-player=syntax-player.desktop
             std::process::Command::new("cmd").arg("/c").arg("start").arg("https://www.syntax.eco/games").spawn().unwrap();
             std::process::exit(0);
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
         {
             std::process::Command::new("xdg-open").arg("https://www.syntax.eco/games").spawn().unwrap();
+            std::process::exit(0);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open").arg("https://www.syntax.eco/games").spawn().unwrap();
             std::process::exit(0);
         }
     }
@@ -507,7 +589,7 @@ x-scheme-handler/syntax-player=syntax-player.desktop
         }
     }
 
-    let custom_wine = "wine";
+    let custom_wine = "wine64";
     #[cfg(not(target_os = "windows"))]
     {
         // We allow user to specify the wine binary path in installation_directory/winepath.txt
