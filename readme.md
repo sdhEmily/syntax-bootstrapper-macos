@@ -1,4 +1,4 @@
-# THIS PROJECT IS ON HOLD BECAUSE MY COMPUTER DIED!!!! (rest in peace)
+# syntax is dead lol archived for obvious reasons
 
 
 # Syntax Boostrapper
